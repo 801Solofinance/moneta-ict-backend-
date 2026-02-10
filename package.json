@@ -1,14 +1,14 @@
 {
   "name": "moneta-ict-backend",
   "version": "1.0.0",
-  "description": "MONETA-ICT Backend API - Complete Express + PostgreSQL + Telegram Bot",
+  "description": "MONETA-ICT Backend API - Complete Express + PostgreSQL",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "init-db": "node src/scripts/initDatabase.js"
   },
-  "keywords": ["investment", "api", "express", "postgresql", "telegram"],
+  "keywords": ["investment", "api", "express", "postgresql"],
   "author": "",
   "license": "MIT",
   "dependencies": {

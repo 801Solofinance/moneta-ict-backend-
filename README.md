@@ -1,17 +1,6 @@
 # MONETA-ICT Backend API
 
-Complete Express.js + PostgreSQL backend for the MONETA-ICT investment platform.
-
-## Features
-
-- ✅ User authentication (JWT)
-- ✅ Deposit processing with file uploads
-- ✅ Withdrawal management
-- ✅ Investment tracking
-- ✅ Admin approval system via Telegram
-- ✅ Transaction history
-- ✅ Referral system
-- ✅ Country-specific currency handling (COP/PEN)
+Complete Express.js + PostgreSQL backend for MONETA-ICT investment platform.
 
 ## Quick Start
 
@@ -26,42 +15,34 @@ npm run dev
 ## API Endpoints
 
 ### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login user
-- `POST /api/auth/refresh` - Refresh JWT token
+- POST /api/auth/register
+- POST /api/auth/login
+- POST /api/auth/refresh
 
 ### User
-- `GET /api/user/profile` - Get user profile
-- `PATCH /api/user/profile` - Update profile
+- GET /api/user/profile
+- PATCH /api/user/profile
+- GET /api/user/referrals
 
 ### Transactions
-- `POST /api/transactions/deposit` - Create deposit
-- `POST /api/transactions/withdraw` - Request withdrawal
-- `POST /api/transactions/invest` - Create investment
-- `GET /api/transactions/history` - Get user transactions
+- POST /api/transactions/deposit
+- GET /api/transactions/deposits
+- POST /api/transactions/withdraw
+- GET /api/transactions/withdrawals
+- POST /api/transactions/invest
+- GET /api/transactions/investments
+- GET /api/transactions/history
 
 ### Admin
-- `GET /api/admin/deposits/pending` - Get pending deposits
-- `PATCH /api/admin/deposits/:id/approve` - Approve deposit
-- `PATCH /api/admin/deposits/:id/reject` - Reject deposit
-- `GET /api/admin/withdrawals/pending` - Get pending withdrawals
-- `PATCH /api/admin/withdrawals/:id/approve` - Approve withdrawal
-- `GET /api/admin/users` - Get all users
-- `GET /api/admin/stats` - System statistics
-
-## Environment Variables
-
-See `.env.example` for all required variables.
-
-## Database Schema
-
-Run `npm run init-db` to create all tables:
-- users
-- deposits
-- withdrawals
-- investments
-- transactions
+- GET /api/admin/deposits/pending
+- PATCH /api/admin/deposits/:id/approve
+- PATCH /api/admin/deposits/:id/reject
+- GET /api/admin/withdrawals/pending
+- PATCH /api/admin/withdrawals/:id/approve
+- PATCH /api/admin/withdrawals/:id/reject
+- GET /api/admin/users
+- GET /api/admin/stats
 
 ## Deployment
 
-See `/FULLSTACK-DEPLOYMENT.md` for complete deployment guide to Render.
+See DEPLOYMENT-GUIDE.md
