@@ -1,45 +1,53 @@
 // backend/services/welcome-bonus.js
 // Welcome Bonus Service - Auto-credit on registration
 
+const { Transaction } = require('../models'); // adjust if your path differs
+
 /**
  * Country-specific welcome bonuses
+ * Only Colombia and Peru supported
  */
 const WELCOME_BONUSES = {
-  PE: { amount: 10, currency: 'PEN', name: 'Peru' },      // Peru - 10 soles
-  US: { amount: 5, currency: 'USD', name: 'United States' },
-  GB: { amount: 5, currency: 'GBP', name: 'United Kingdom' },
-  EU: { amount: 5, currency: 'EUR', name: 'European Union' },
-  MX: { amount: 100, currency: 'MXN', name: 'Mexico' },
-  BR: { amount: 25, currency: 'BRL', name: 'Brazil' },
-  AR: { amount: 500, currency: 'ARS', name: 'Argentina' },
-  CL: { amount: 5000, currency: 'CLP', name: 'Chile' },
-  CO: { amount: 20000, currency: 'COP', name: 'Colombia' },
-  DEFAULT: { amount: 5, currency: 'USD', name: 'Default' }
+  CO: { amount: 12000, currency: 'COP', name: 'Colombia' },
+  PE: { amount: 10, currency: 'PEN', name: 'Peru' }
 };
 
 /**
  * Credit welcome bonus to new user
- * @param {Object} user - User object
- * @param {string} country - User's country code (ISO 2-letter)
- * @returns {Promise<Object>} Bonus details
+ * @param {Object} user - Sequelize user instance
+ * @param {string} country - 'CO' or 'PE'
+ * @returns {Promise<Object>}
  */
-async function creditWelcomeBonus(user, country = 'DEFAULT') {
+async function creditWelcomeBonus(user, country) {
   try {
-    // Get bonus amount for country
-    const bonus = WELCOME_BONUSES[country] || WELCOME_BONUSES.DEFAULT;
+    // Validate supported country
+    if (!WELCOME_BONUSES[country]) {
+      throw new Error('Unsupported country for welcome bonus');
+    }
 
-    // Update user balance
+    const bonus = WELCOME_BONUSES[country];
+
+    // Prevent double credit
+    if (user.welcomeBonusCredited) {
+      return {
+        success: false,
+        message: 'Welcome bonus already credited'
+      };
+    }
+
+    // Calculate new balance
     const currentBalance = parseFloat(user.balance) || 0;
     const newBalance = currentBalance + bonus.amount;
 
+    // Update user
     await user.update({
       balance: newBalance,
       currency: bonus.currency,
-      welcomeBonusCredited: true,
-      country: country
+      country: country,
+      welcomeBonusCredited: true
     });
 
-    // Create transaction record for welcome bonus
+    // Create transaction record
     const transaction = await Transaction.create({
       userId: user.id,
       transactionId: `WB${Date.now()}${user.id}`,
@@ -47,90 +55,25 @@ async function creditWelcomeBonus(user, country = 'DEFAULT') {
       amount: bonus.amount,
       currency: bonus.currency,
       status: 'COMPLETED',
-      description: `Welcome Bonus - ${bonus.name}`,
-      createdAt: new Date(),
-      updatedAt: new Date()
+      description: `Welcome Bonus - ${bonus.name}`
     });
 
-    console.log(`✅ Welcome bonus credited to user ${user.id}: ${bonus.currency} ${bonus.amount}`);
+    console.log(
+      `✅ Welcome bonus credited: User ${user.id} → ${bonus.currency} ${bonus.amount}`
+    );
 
     return {
       success: true,
-      bonus: {
-        amount: bonus.amount,
-        currency: bonus.currency,
-        country: bonus.name
-      },
+      bonus: bonus,
       newBalance,
       transaction
     };
   } catch (error) {
-    console.error('Error crediting welcome bonus:', error);
+    console.error('❌ Error crediting welcome bonus:', error);
     throw error;
   }
 }
 
-/**
- * Detect user's country from IP address
- * @param {string} ipAddress - User's IP address
- * @returns {Promise<string>} Country code
- */
-async function detectCountryFromIP(ipAddress) {
-  try {
-    // Use a geolocation API (e.g., ipapi.co, ip-api.com)
-    const response = await fetch(`https://ipapi.co/${ipAddress}/json/`);
-    const data = await response.json();
-    
-    return data.country_code || 'DEFAULT';
-  } catch (error) {
-    console.error('Error detecting country:', error);
-    return 'DEFAULT';
-  }
-}
-
-/**
- * Integration with user registration
- * Call this function after user registration is complete
- */
-async function handleUserRegistration(user, ipAddress) {
-  try {
-    // Detect country
-    const country = await detectCountryFromIP(ipAddress);
-
-    // Credit welcome bonus
-    const bonusResult = await creditWelcomeBonus(user, country);
-
-    return {
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        balance: bonusResult.newBalance,
-        currency: bonusResult.bonus.currency
-      },
-      welcomeBonus: bonusResult.bonus
-    };
-  } catch (error) {
-    console.error('Error handling user registration:', error);
-    // Don't fail registration if bonus fails
-    return {
-      success: false,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        balance: user.balance || 0,
-        currency: user.currency || 'USD'
-      },
-      error: 'Failed to credit welcome bonus'
-    };
-  }
-}
-
 module.exports = {
-  creditWelcomeBonus,
-  detectCountryFromIP,
-  handleUserRegistration,
-  WELCOME_BONUSES
+  creditWelcomeBonus
 };
