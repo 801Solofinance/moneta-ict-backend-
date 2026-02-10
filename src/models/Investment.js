@@ -10,11 +10,10 @@ class Investment {
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('UPDATE users SET balance = balance - $1 WHERE id = $2', [amount, userId]);
-      const query = `INSERT INTO investments (user_id, plan_id, plan_name, amount, daily_return, duration_days, start_date, end_date, status) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active') RETURNING *`;
-      const result = await client.query(query, [userId, planId, planName, amount, dailyReturn, durationDays, startDate, endDate]);
-      await client.query('INSERT INTO transactions (user_id, type, amount, status, reference_id, description) VALUES ($1, $2, $3, $4, $5, $6)', [userId, 'investment', amount, 'active', result.rows[0].id, \`Investment in \${planName}\`]);
-      await client.query('COMMIT');
+      await client.query(
+  'INSERT INTO transactions (user_id, type, amount, status, reference_id, description) VALUES ($1, $2, $3, $4, $5, $6)',
+  [userId, 'investment', amount, 'active', result.rows[0].id, 'Investment in ' + planName]
+);
       return result.rows[0];
     } catch (error) {
       await client.query('ROLLBACK');
