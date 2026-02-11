@@ -1,29 +1,45 @@
-// src/models/index.js
-
 const { Sequelize } = require('sequelize');
-const UserModel = require('./User');
-const TransactionModel = require('./Transaction');
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
+  process.env.DATABASE_URL,
   {
-    host: process.env.DB_HOST,
     dialect: 'postgres',
-    logging: false
+    protocol: 'postgres',
+    logging: false,
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    }
   }
 );
 
-const User = UserModel(sequelize);
-const Transaction = TransactionModel(sequelize);
+// Import models
+const User = require('./User')(sequelize);
+const Transaction = require('./Transaction')(sequelize);
+const Deposit = require('./Deposit')(sequelize);
+const Withdrawal = require('./Withdrawal')(sequelize);
+const Investment = require('./Investment')(sequelize);
 
 // Associations
 User.hasMany(Transaction, { foreignKey: 'userId' });
 Transaction.belongsTo(User, { foreignKey: 'userId' });
 
+User.hasMany(Deposit, { foreignKey: 'userId' });
+Deposit.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Withdrawal, { foreignKey: 'userId' });
+Withdrawal.belongsTo(User, { foreignKey: 'userId' });
+
+User.hasMany(Investment, { foreignKey: 'userId' });
+Investment.belongsTo(User, { foreignKey: 'userId' });
+
 module.exports = {
   sequelize,
   User,
-  Transaction
+  Transaction,
+  Deposit,
+  Withdrawal,
+  Investment
 };
