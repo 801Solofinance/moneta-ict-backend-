@@ -1,42 +1,46 @@
-// src/services/welcome-bonus.js
+const { User, Transaction } = require('../models');
 
-/*
-  MONETA-ICT
-  Welcome Bonus Service
+/**
+ * Colombia & Peru only
+ */
+const WELCOME_BONUS = {
+  CO: {
+    amount: 12000,
+    currency: 'COP'
+  },
+  PE: {
+    amount: 10,
+    currency: 'PEN'
+  }
+};
 
-  Colombia  → 12,000 COP
-  Peru      → 10 PEN
-*/
-
-async function handleUserRegistration(user) {
+async function handleUserRegistration(user, countryCode) {
   try {
-    let bonusAmount = 0;
-    let currency = 'COP';
+    const country = countryCode === 'CO' ? 'CO' : 'PE';
 
-    if (user.country === 'PE') {
-      bonusAmount = 10;
-      currency = 'PEN';
-    } else if (user.country === 'CO') {
-      bonusAmount = 12000;
-      currency = 'COP';
-    }
+    const bonus = WELCOME_BONUS[country];
 
-    const currentBalance = parseFloat(user.balance || 0);
-    const newBalance = currentBalance + bonusAmount;
+    const newBalance = parseFloat(user.balance) + bonus.amount;
 
     await user.update({
       balance: newBalance,
-      currency: currency,
+      currency: bonus.currency,
+      country: country,
       welcomeBonusCredited: true
     });
 
+    await Transaction.create({
+      userId: user.id,
+      type: 'WELCOME_BONUS',
+      amount: bonus.amount,
+      currency: bonus.currency,
+      status: 'COMPLETED',
+      description: 'Welcome Bonus'
+    });
+
     return {
-      success: true,
       user,
-      welcomeBonus: {
-        amount: bonusAmount,
-        currency
-      }
+      welcomeBonus: bonus
     };
 
   } catch (error) {
@@ -45,6 +49,4 @@ async function handleUserRegistration(user) {
   }
 }
 
-module.exports = {
-  handleUserRegistration
-};
+module.exports = { handleUserRegistration };
