@@ -1,63 +1,40 @@
-// backend/services/welcome-bonus.js
+// src/services/welcome-bonus.js
 
-const db = require('../database'); // <-- change if your DB file name is different
-
+/**
+ * Welcome bonus amounts
+ * Only Colombia & Peru supported
+ */
 const WELCOME_BONUSES = {
-  CO: { amount: 12000, currency: 'COP', name: 'Colombia' },
-  PE: { amount: 10, currency: 'PEN', name: 'Peru' }
+  CO: { amount: 12000, currency: 'COP' },
+  PE: { amount: 10, currency: 'PEN' }
 };
 
-async function creditWelcomeBonus(user, country) {
-  try {
-    if (!WELCOME_BONUSES[country]) {
-      throw new Error('Unsupported country');
-    }
+/**
+ * Apply welcome bonus to user
+ * @param {Object} user
+ */
+function applyWelcomeBonus(user) {
+  if (!user) return user;
 
-    const bonus = WELCOME_BONUSES[country];
-
-    // prevent double credit
-    if (user.welcome_bonus_credited) {
-      return { success: false };
-    }
-
-    const newBalance = parseFloat(user.balance || 0) + bonus.amount;
-
-    // Update user
-    await db.query(
-      `UPDATE users 
-       SET balance = $1,
-           currency = $2,
-           welcome_bonus_credited = true
-       WHERE id = $3`,
-      [newBalance, bonus.currency, user.id]
-    );
-
-    // Insert transaction
-    await db.query(
-      `INSERT INTO transactions 
-        (user_id, type, amount, currency, status, description)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        user.id,
-        'WELCOME_BONUS',
-        bonus.amount,
-        bonus.currency,
-        'COMPLETED',
-        `Welcome Bonus - ${bonus.name}`
-      ]
-    );
-
-    return {
-      success: true,
-      amount: bonus.amount,
-      currency: bonus.currency,
-      newBalance
-    };
-
-  } catch (error) {
-    console.error('Welcome bonus error:', error);
-    throw error;
+  // Prevent double bonus
+  if (user.welcomeBonusApplied) {
+    return user;
   }
+
+  const country = user.country === 'PE' ? 'PE' : 'CO';
+  const bonus = WELCOME_BONUSES[country];
+
+  const currentBalance = parseFloat(user.balance || 0);
+  const newBalance = currentBalance + bonus.amount;
+
+  return {
+    ...user,
+    balance: newBalance,
+    currency: bonus.currency,
+    welcomeBonusApplied: true
+  };
 }
 
-module.exports = { creditWelcomeBonus };
+module.exports = {
+  applyWelcomeBonus
+};
