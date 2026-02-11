@@ -5,8 +5,8 @@ const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
 // Initialize bot with your bot token
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8394504113:AAEkj8hLZhCReCpCdRFKT4e1fobgEm8BBu4';
-const ADMIN_CHAT_ID = process.env.ADMIN_TELEGRAM_ID || '7705534225';
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || 'YOUR_BOT_TOKEN_HERE';
+const ADMIN_CHAT_ID = process.env.ADMIN_TELEGRAM_ID || 'YOUR_ADMIN_CHAT_ID';
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
