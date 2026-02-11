@@ -1,23 +1,48 @@
-const db = require('../config/database');
+// src/models/Transaction.js
 
-class Transaction {
-  static async create(transactionData) {
-    const { userId, type, amount, status, referenceId, description } = transactionData;
-    const query = `INSERT INTO transactions (user_id, type, amount, status, reference_id, description) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`;
-    const result = await db.query(query, [userId, type, amount, status, referenceId, description]);
-    return result.rows[0];
-  }
+const { DataTypes } = require('sequelize');
 
-  static async findByUserId(userId, limit = 50) {
-    const result = await db.query('SELECT * FROM transactions WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2', [userId, limit]);
-    return result.rows;
-  }
+module.exports = (sequelize) => {
+  const Transaction = sequelize.define('Transaction', {
+    id: {
+      type: DataTypes.INTEGER,
+      autoIncrement: true,
+      primaryKey: true
+    },
 
-  static async getAll(limit = 100) {
-    const query = `SELECT t.*, u.name as user_name, u.email as user_email FROM transactions t JOIN users u ON t.user_id = u.id ORDER BY t.created_at DESC LIMIT $1`;
-    const result = await db.query(query, [limit]);
-    return result.rows;
-  }
-}
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
 
-module.exports = Transaction;
+    type: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+
+    amount: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: false
+    },
+
+    currency: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+
+    status: {
+      type: DataTypes.STRING,
+      defaultValue: 'PENDING'
+    },
+
+    description: {
+      type: DataTypes.STRING
+    }
+
+  }, {
+    tableName: 'transactions',
+    timestamps: true
+  });
+
+  return Transaction;
+};
