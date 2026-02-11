@@ -1,19 +1,17 @@
 // src/routes/auth.js
 
-const { User } = require('../models');
-const { Op } = require('sequelize');
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
-const { User, Transaction } = require('../models');
 
-/*
-|--------------------------------------------------------------------------
-| PASSWORD VALIDATION
-|--------------------------------------------------------------------------
-*/
+const { User } = require('../models');
+const { handleUserRegistration } = require('../services/welcome-bonus');
+
+/* ==================================================
+   PASSWORD VALIDATION
+================================================== */
 
 function validatePassword(password) {
   const minLength = password.length >= 6;
@@ -36,16 +34,14 @@ function validatePassword(password) {
       hasUpperCase,
       hasLowerCase,
       hasNumber,
-      hasSpecialChar
-    }
+      hasSpecialChar,
+    },
   };
 }
 
-/*
-|--------------------------------------------------------------------------
-| REGISTER
-|--------------------------------------------------------------------------
-*/
+/* ==================================================
+   REGISTER
+================================================== */
 
 router.post('/register', async (req, res) => {
   try {
@@ -54,15 +50,7 @@ router.post('/register', async (req, res) => {
     if (!username || !email || !password || !country) {
       return res.status(400).json({
         success: false,
-        message: 'Username, email, password and country are required'
-      });
-    }
-
-    // Only allow CO or PE
-    if (!['CO', 'PE'].includes(country)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid country. Only Colombia (CO) and Peru (PE) allowed.'
+        message: 'Username, email, password and country are required',
       });
     }
 
@@ -72,59 +60,45 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'Password does not meet requirements',
-        requirements: passwordValidation.requirements
+        requirements: passwordValidation.requirements,
       });
     }
 
     const existingUser = await User.findOne({
       where: {
-        [Op.or]: [{ username }, { email }]
-      }
+        [Op.or]: [{ username }, { email }],
+      },
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'Username or email already exists'
+        message: 'Username or email already exists',
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Country-based bonus
-    const welcomeBonusAmount = country === 'CO' ? 12000 : 10;
-    const currency = country === 'CO' ? 'COP' : 'PEN';
 
     const user = await User.create({
       username,
       email,
       password: hashedPassword,
       fullName: fullName || username,
-      country,
-      balance: welcomeBonusAmount,
-      currency,
-      welcomeBonusCredited: true
+      balance: 0,
+      currency: 'COP',
+      welcomeBonusCredited: false,
     });
 
-    // Create bonus transaction
-    await Transaction.create({
-      userId: user.id,
-      type: 'WELCOME_BONUS',
-      amount: welcomeBonusAmount,
-      currency,
-      status: 'COMPLETED',
-      description: 'Welcome Bonus',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    // Apply welcome bonus (CO = 12000, PE = 10)
+    const result = await handleUserRegistration(user, country);
 
     const token = jwt.sign(
       {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
       },
-      process.env.JWT_SECRET || 'super-secret-key',
+      process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '30d' }
     );
 
@@ -133,30 +107,28 @@ router.post('/register', async (req, res) => {
       message: 'Registration successful',
       token,
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.fullName,
-        balance: user.balance,
-        currency: user.currency,
-        country: user.country
-      }
+        id: result.user.id,
+        username: result.user.username,
+        email: result.user.email,
+        fullName: result.user.fullName,
+        balance: result.user.balance,
+        currency: result.user.currency,
+      },
+      welcomeBonus: result.welcomeBonus,
     });
   } catch (error) {
     console.error('Registration error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Registration failed',
-      error: error.message
+      error: error.message,
     });
   }
 });
 
-/*
-|--------------------------------------------------------------------------
-| LOGIN
-|--------------------------------------------------------------------------
-*/
+/* ==================================================
+   LOGIN
+================================================== */
 
 router.post('/login', async (req, res) => {
   try {
@@ -165,20 +137,20 @@ router.post('/login', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username/email and password required'
+        message: 'Username and password required',
       });
     }
 
     const user = await User.findOne({
       where: {
-        [Op.or]: [{ username }, { email: username }]
-      }
+        [Op.or]: [{ username }, { email: username }],
+      },
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid credentials',
       });
     }
 
@@ -187,7 +159,7 @@ router.post('/login', async (req, res) => {
     if (!isValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Invalid credentials',
       });
     }
 
@@ -195,9 +167,9 @@ router.post('/login', async (req, res) => {
       {
         id: user.id,
         username: user.username,
-        email: user.email
+        email: user.email,
       },
-      process.env.JWT_SECRET || 'super-secret-key',
+      process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '30d' }
     );
 
@@ -212,42 +184,16 @@ router.post('/login', async (req, res) => {
         fullName: user.fullName,
         balance: user.balance,
         currency: user.currency,
-        country: user.country
-      }
+      },
     });
   } catch (error) {
     console.error('Login error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Login failed',
-      error: error.message
+      error: error.message,
     });
   }
-});
-
-/*
-|--------------------------------------------------------------------------
-| PASSWORD VALIDATION ENDPOINT
-|--------------------------------------------------------------------------
-*/
-
-router.post('/validate-password', (req, res) => {
-  const { password } = req.body;
-
-  if (!password) {
-    return res.status(400).json({
-      success: false,
-      message: 'Password required'
-    });
-  }
-
-  const validation = validatePassword(password);
-
-  return res.json({
-    success: true,
-    isValid: validation.isValid,
-    requirements: validation.requirements
-  });
 });
 
 module.exports = router;
