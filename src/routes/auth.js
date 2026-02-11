@@ -1,24 +1,21 @@
 // backend/routes/auth.js
-// Authentication routes with enhanced password validation and welcome bonus
 
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { handleUserRegistration } = require('../services/welcome-bonus');
+const { Op } = require('sequelize'); // IMPORTANT
 
-// Import your User model
-// const { User } = require('../models');
+// ✅ FIX: Properly import your User model
+const { User } = require('../models'); 
 
-/**
- * Password validation function
- * Must meet these requirements:
- * - Minimum 6 characters
- * - At least one uppercase letter
- * - At least one lowercase letter
- * - At least one number
- * - At least one special character
- */
+// ✅ FIX: Correct welcome bonus import
+const { applyWelcomeBonus } = require('../services/welcome-bonus');
+
+/* =========================
+   PASSWORD VALIDATION
+========================= */
+
 function validatePassword(password) {
   const minLength = password.length >= 6;
   const hasUpperCase = /[A-Z]/.test(password);
@@ -26,183 +23,76 @@ function validatePassword(password) {
   const hasNumber = /\d/.test(password);
   const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
 
-  const isValid = minLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar;
-
   return {
-    isValid,
-    requirements: {
-      minLength,
-      hasUpperCase,
-      hasLowerCase,
-      hasNumber,
-      hasSpecialChar
-    }
+    isValid: minLength && hasUpperCase && hasLowerCase && hasNumber && hasSpecialChar
   };
 }
 
-/**
- * REGISTER NEW USER
- * POST /api/auth/register
- * Body: { username, email, password, fullName? }
- */
+/* =========================
+   REGISTER
+========================= */
+
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, fullName } = req.body;
-    const ipAddress = req.ip || req.connection.remoteAddress;
+    const { username, email, password, fullName, country } = req.body;
 
-    // Validate input
-    if (!username || !email || !password) {
+    if (!username || !email || !password || !country) {
       return res.status(400).json({
         success: false,
-        message: 'Username, email, and password are required'
+        message: 'All fields are required'
       });
     }
 
-    // Validate password strength
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.isValid) {
       return res.status(400).json({
         success: false,
-        message: 'Password does not meet requirements',
-        requirements: passwordValidation.requirements
+        message: 'Password does not meet security requirements'
       });
     }
 
-    // Check if username already exists
-    const existingUsername = await User.findOne({ where: { username } });
-    if (existingUsername) {
-      return res.status(400).json({
-        success: false,
-        message: 'Username already exists'
-      });
-    }
-
-    // Check if email already exists
-    const existingEmail = await User.findOne({ where: { email } });
-    if (existingEmail) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email already registered'
-      });
-    }
-
-    // Hash password
-    const saltRounds = 10;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-
-    // Create user
-    const user = await User.create({
-      username,
-      email,
-      password: hashedPassword,
-      fullName: fullName || username,
-      balance: 0,
-      currency: 'USD', // Will be updated by welcome bonus
-      welcomeBonusCredited: false,
-      createdAt: new Date()
-    });
-
-    // Handle welcome bonus
-    const registrationResult = await handleUserRegistration(user, ipAddress);
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        username: user.username,
-        email: user.email 
-      },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '30d' }
-    );
-
-    // Return user data (without password)
-    res.status(201).json({
-      success: true,
-      message: 'Registration successful',
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.fullName,
-        balance: registrationResult.user.balance,
-        currency: registrationResult.user.currency
-      },
-      welcomeBonus: registrationResult.welcomeBonus || null
-    });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error during registration',
-      error: error.message
-    });
-  }
-});
-
-/**
- * LOGIN USER
- * POST /api/auth/login
- * Body: { username, password }
- */
-router.post('/login', async (req, res) => {
-  try {
-    const { username, password } = req.body;
-
-    // Validate input
-    if (!username || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Username and password are required'
-      });
-    }
-
-    // Find user (by username or email)
-    const user = await User.findOne({
+    const existingUser = await User.findOne({
       where: {
-        [Op.or]: [
-          { username },
-          { email: username }
-        ]
+        [Op.or]: [{ username }, { email }]
       }
     });
 
-    if (!user) {
-      return res.status(401).json({
+    if (existingUser) {
+      return res.status(400).json({
         success: false,
-        message: 'Invalid credentials'
+        message: 'Username or email already exists'
       });
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate JWT token
+    let user = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      fullName,
+      country,
+      balance: 0,
+      currency: country === 'PE' ? 'PEN' : 'COP'
+    });
+
+    // ✅ APPLY WELCOME BONUS
+    const updatedUser = applyWelcomeBonus(user);
+
+    await user.update({
+      balance: updatedUser.balance,
+      currency: updatedUser.currency,
+      welcomeBonusApplied: true
+    });
+
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        username: user.username,
-        email: user.email 
-      },
-      process.env.JWT_SECRET || 'your-secret-key',
+      { id: user.id },
+      process.env.JWT_SECRET || 'supersecret',
       { expiresIn: '30d' }
     );
 
-    // Update last login
-    await user.update({
-      lastLogin: new Date()
-    });
-
-    res.json({
+    res.status(201).json({
       success: true,
-      message: 'Login successful',
       token,
       user: {
         id: user.id,
@@ -213,38 +103,71 @@ router.post('/login', async (req, res) => {
         currency: user.currency
       }
     });
+
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('REGISTER ERROR:', error);
     res.status(500).json({
       success: false,
-      message: 'Error during login',
-      error: error.message
+      message: 'Server error'
     });
   }
 });
 
-/**
- * VERIFY PASSWORD STRENGTH
- * POST /api/auth/validate-password
- * Body: { password }
- */
-router.post('/validate-password', (req, res) => {
-  const { password } = req.body;
+/* =========================
+   LOGIN
+========================= */
 
-  if (!password) {
-    return res.status(400).json({
+router.post('/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    const user = await User.findOne({
+      where: {
+        [Op.or]: [{ username }, { email: username }]
+      }
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials'
+      });
+    }
+
+    const token = jwt.sign(
+      { id: user.id },
+      process.env.JWT_SECRET || 'supersecret',
+      { expiresIn: '30d' }
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        balance: user.balance,
+        currency: user.currency
+      }
+    });
+
+  } catch (error) {
+    console.error('LOGIN ERROR:', error);
+    res.status(500).json({
       success: false,
-      message: 'Password is required'
+      message: 'Server error'
     });
   }
-
-  const validation = validatePassword(password);
-
-  res.json({
-    success: true,
-    isValid: validation.isValid,
-    requirements: validation.requirements
-  });
 });
 
 module.exports = router;
