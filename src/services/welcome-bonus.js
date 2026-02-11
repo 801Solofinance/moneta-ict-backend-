@@ -1,79 +1,63 @@
 // backend/services/welcome-bonus.js
-// Welcome Bonus Service - Auto-credit on registration
 
-const { Transaction } = require('../models'); // adjust if your path differs
+const db = require('../database'); // <-- change if your DB file name is different
 
-/**
- * Country-specific welcome bonuses
- * Only Colombia and Peru supported
- */
 const WELCOME_BONUSES = {
   CO: { amount: 12000, currency: 'COP', name: 'Colombia' },
   PE: { amount: 10, currency: 'PEN', name: 'Peru' }
 };
 
-/**
- * Credit welcome bonus to new user
- * @param {Object} user - Sequelize user instance
- * @param {string} country - 'CO' or 'PE'
- * @returns {Promise<Object>}
- */
 async function creditWelcomeBonus(user, country) {
   try {
-    // Validate supported country
     if (!WELCOME_BONUSES[country]) {
-      throw new Error('Unsupported country for welcome bonus');
+      throw new Error('Unsupported country');
     }
 
     const bonus = WELCOME_BONUSES[country];
 
-    // Prevent double credit
-    if (user.welcomeBonusCredited) {
-      return {
-        success: false,
-        message: 'Welcome bonus already credited'
-      };
+    // prevent double credit
+    if (user.welcome_bonus_credited) {
+      return { success: false };
     }
 
-    // Calculate new balance
-    const currentBalance = parseFloat(user.balance) || 0;
-    const newBalance = currentBalance + bonus.amount;
+    const newBalance = parseFloat(user.balance || 0) + bonus.amount;
 
     // Update user
-    await user.update({
-      balance: newBalance,
-      currency: bonus.currency,
-      country: country,
-      welcomeBonusCredited: true
-    });
+    await db.query(
+      `UPDATE users 
+       SET balance = $1,
+           currency = $2,
+           welcome_bonus_credited = true
+       WHERE id = $3`,
+      [newBalance, bonus.currency, user.id]
+    );
 
-    // Create transaction record
-    const transaction = await Transaction.create({
-      userId: user.id,
-      transactionId: `WB${Date.now()}${user.id}`,
-      type: 'WELCOME_BONUS',
-      amount: bonus.amount,
-      currency: bonus.currency,
-      status: 'COMPLETED',
-      description: `Welcome Bonus - ${bonus.name}`
-    });
-
-    console.log(
-      `✅ Welcome bonus credited: User ${user.id} → ${bonus.currency} ${bonus.amount}`
+    // Insert transaction
+    await db.query(
+      `INSERT INTO transactions 
+        (user_id, type, amount, currency, status, description)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        user.id,
+        'WELCOME_BONUS',
+        bonus.amount,
+        bonus.currency,
+        'COMPLETED',
+        `Welcome Bonus - ${bonus.name}`
+      ]
     );
 
     return {
       success: true,
-      bonus: bonus,
-      newBalance,
-      transaction
+      amount: bonus.amount,
+      currency: bonus.currency,
+      newBalance
     };
+
   } catch (error) {
-    console.error('❌ Error crediting welcome bonus:', error);
+    console.error('Welcome bonus error:', error);
     throw error;
   }
 }
 
-module.exports = {
-  creditWelcomeBonus
-};
+module.exports = { creditWelcomeBonus };
