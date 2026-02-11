@@ -1,40 +1,50 @@
 // src/services/welcome-bonus.js
 
-/**
- * Welcome bonus amounts
- * Only Colombia & Peru supported
- */
-const WELCOME_BONUSES = {
-  CO: { amount: 12000, currency: 'COP' },
-  PE: { amount: 10, currency: 'PEN' }
-};
+/*
+  MONETA-ICT
+  Welcome Bonus Service
 
-/**
- * Apply welcome bonus to user
- * @param {Object} user
- */
-function applyWelcomeBonus(user) {
-  if (!user) return user;
+  Colombia  → 12,000 COP
+  Peru      → 10 PEN
+*/
 
-  // Prevent double bonus
-  if (user.welcomeBonusApplied) {
-    return user;
+async function handleUserRegistration(user) {
+  try {
+    let bonusAmount = 0;
+    let currency = 'COP';
+
+    if (user.country === 'PE') {
+      bonusAmount = 10;
+      currency = 'PEN';
+    } else if (user.country === 'CO') {
+      bonusAmount = 12000;
+      currency = 'COP';
+    }
+
+    const currentBalance = parseFloat(user.balance || 0);
+    const newBalance = currentBalance + bonusAmount;
+
+    await user.update({
+      balance: newBalance,
+      currency: currency,
+      welcomeBonusCredited: true
+    });
+
+    return {
+      success: true,
+      user,
+      welcomeBonus: {
+        amount: bonusAmount,
+        currency
+      }
+    };
+
+  } catch (error) {
+    console.error('Welcome bonus error:', error);
+    throw error;
   }
-
-  const country = user.country === 'PE' ? 'PE' : 'CO';
-  const bonus = WELCOME_BONUSES[country];
-
-  const currentBalance = parseFloat(user.balance || 0);
-  const newBalance = currentBalance + bonus.amount;
-
-  return {
-    ...user,
-    balance: newBalance,
-    currency: bonus.currency,
-    welcomeBonusApplied: true
-  };
 }
 
 module.exports = {
-  applyWelcomeBonus
+  handleUserRegistration
 };
