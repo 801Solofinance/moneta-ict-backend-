@@ -4,6 +4,7 @@ const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
   const User = sequelize.define('User', {
+    
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
@@ -40,7 +41,7 @@ module.exports = (sequelize) => {
       allowNull: false
     },
 
-    // 🔐 NEW: Role system
+    // 🔥 NEW — ROLE SYSTEM
     role: {
       type: DataTypes.ENUM('user', 'admin'),
       defaultValue: 'user'
@@ -48,6 +49,7 @@ module.exports = (sequelize) => {
 
     balance: {
       type: DataTypes.DECIMAL(15, 2),
+      allowNull: false,
       defaultValue: 0
     },
 
@@ -59,6 +61,11 @@ module.exports = (sequelize) => {
     welcomeBonusCredited: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+
+    lastLogin: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
 
   }, {
