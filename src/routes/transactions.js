@@ -7,7 +7,7 @@ const path = require('path');
 const axios = require('axios');
 
 const { Transaction, User } = require('../models');
-const { authenticate } = require('../middleware/auth'); // adjust path if needed
+const { authenticate } = require('../middleware/auth'); // ✅ FIXED
 
 // ===============================
 // Multer Setup
@@ -45,7 +45,10 @@ router.post('/deposit', authenticate, async (req, res) => {
     const userId = req.userId; // ✅ FIXED
 
     if (!amount || !currency) {
-      return res.status(400).json({ success: false, message: 'Missing fields' });
+      return res.status(400).json({
+        success: false,
+        message: 'Missing amount or currency'
+      });
     }
 
     const transactionId = `DEP${Date.now()}${userId}`;
@@ -55,7 +58,8 @@ router.post('/deposit', authenticate, async (req, res) => {
       type: 'DEPOSIT',
       amount,
       currency,
-      status: 'PENDING'
+      status: 'PENDING',
+      description: 'User deposit'
     });
 
     res.json({
@@ -64,8 +68,11 @@ router.post('/deposit', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: 'Deposit error' });
+    console.error('Deposit error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Deposit error'
+    });
   }
 });
 
@@ -73,62 +80,71 @@ router.post('/deposit', authenticate, async (req, res) => {
 // UPLOAD PAYMENT PROOF
 // ===============================
 
-router.post('/:transactionId/upload-proof', authenticate, upload.single('paymentProof'), async (req, res) => {
-  try {
-    const { transactionId } = req.params;
-    const userId = req.userId; // ✅ FIXED
+router.post('/:transactionId/upload-proof',
+  authenticate,
+  upload.single('paymentProof'),
+  async (req, res) => {
+    try {
+      const { transactionId } = req.params;
+      const userId = req.userId;
 
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'No file uploaded' });
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No file uploaded'
+        });
+      }
+
+      const transaction = await Transaction.findOne({
+        where: { id: transactionId, userId }
+      });
+
+      if (!transaction) {
+        return res.status(404).json({
+          success: false,
+          message: 'Transaction not found'
+        });
+      }
+
+      const paymentProofUrl = `/uploads/payment-proofs/${req.file.filename}`;
+
+      await transaction.update({
+        status: 'REVIEWING'
+      });
+
+      const user = await User.findByPk(userId);
+
+      // Optional Telegram notify
+      if (process.env.BACKEND_URL) {
+        await axios.post(`${process.env.BACKEND_URL}/api/notify-deposit`, {
+          userId: user.id,
+          username: user.username,
+          amount: transaction.amount,
+          transactionId: transaction.id,
+          proofUrl: `${process.env.BACKEND_URL}${paymentProofUrl}`
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Proof uploaded successfully'
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Upload error'
+      });
     }
-
-    const transaction = await Transaction.findOne({
-      where: { id: transactionId, userId }
-    });
-
-    if (!transaction) {
-      return res.status(404).json({ success: false, message: 'Transaction not found' });
-    }
-
-    const paymentProofUrl = `/uploads/payment-proofs/${req.file.filename}`;
-
-    await transaction.update({
-      paymentProofUrl,
-      status: 'REVIEWING'
-    });
-
-    const user = await User.findByPk(userId);
-
-    // Send Telegram notification
-    await axios.post(`${process.env.BACKEND_URL}/api/notify-deposit`, {
-      userId: user.id,
-      userName: user.username,
-      userEmail: user.email,
-      userPhone: user.phone || '',
-      amount: transaction.amount,
-      country: user.country,
-      transactionId: transaction.id,
-      proofImageUrl: `${process.env.BACKEND_URL}${paymentProofUrl}`,
-      proofFileName: req.file.filename,
-      timestamp: new Date()
-    });
-
-    res.json({
-      success: true,
-      message: 'Proof uploaded and sent to admin'
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: 'Upload error' });
   }
-});
+);
 
 // ===============================
-// APPROVE
+// APPROVE DEPOSIT
 // ===============================
 
-router.post('/:transactionId/approve', async (req, res) => {
+router.post('/:transactionId/approve', authenticate, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
@@ -144,6 +160,7 @@ router.post('/:transactionId/approve', async (req, res) => {
       parseFloat(user.balance) + parseFloat(transaction.amount);
 
     await user.update({ balance: newBalance });
+
     await transaction.update({ status: 'COMPLETED' });
 
     res.json({
@@ -152,16 +169,16 @@ router.post('/:transactionId/approve', async (req, res) => {
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('Approve error:', error);
     res.status(500).json({ success: false });
   }
 });
 
 // ===============================
-// REJECT
+// REJECT DEPOSIT
 // ===============================
 
-router.post('/:transactionId/reject', async (req, res) => {
+router.post('/:transactionId/reject', authenticate, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
@@ -176,7 +193,7 @@ router.post('/:transactionId/reject', async (req, res) => {
     res.json({ success: true });
 
   } catch (error) {
-    console.error(error);
+    console.error('Reject error:', error);
     res.status(500).json({ success: false });
   }
 });
