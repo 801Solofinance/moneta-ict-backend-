@@ -2,61 +2,28 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Op } = require('sequelize');
 const { User } = require('../models');
-const { handleUserRegistration } = require('../services/welcome-bonus');
+const { Op } = require('sequelize');
 
-// ===============================
-// Password Validation
-// ===============================
-
-function validatePassword(password) {
-  const minLength = password.length >= 6;
-  const hasUpperCase = /[A-Z]/.test(password);
-  const hasLowerCase = /[a-z]/.test(password);
-  const hasNumber = /\d/.test(password);
-  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
-
-  const isValid =
-    minLength &&
-    hasUpperCase &&
-    hasLowerCase &&
-    hasNumber &&
-    hasSpecialChar;
-
-  return {
-    isValid,
-    requirements: {
-      minLength,
-      hasUpperCase,
-      hasLowerCase,
-      hasNumber,
-      hasSpecialChar
-    }
-  };
-}
-
-// ===============================
+// ============================
 // REGISTER
-// ===============================
+// ============================
 
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, fullName, country, currency } = req.body;
+    const { username, email, password, fullName, country } = req.body;
 
-    if (!username || !email || !password || !country || !currency) {
+    if (!username || !email || !password || !country) {
       return res.status(400).json({
         success: false,
-        message: 'Username, email, password, country and currency required'
+        message: 'All fields are required'
       });
     }
 
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.isValid) {
+    if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message: 'Weak password',
-        requirements: passwordValidation.requirements
+        message: 'Password must be at least 6 characters'
       });
     }
 
@@ -69,62 +36,59 @@ router.post('/register', async (req, res) => {
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: 'Username or email already exists'
+        message: 'Username or Email already exists'
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const currency = country === 'CO' ? 'COP' : 'PEN';
+
     const user = await User.create({
       username,
       email,
       password: hashedPassword,
-      fullName: fullName || username,
+      fullName,
       country,
       currency,
-      balance: 0,
-      welcomeBonusCredited: false
+      balance: 0
     });
 
     const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username
-      },
-      process.env.JWT_SECRET || 'super-secret-key',
+      { id: user.id },
+      process.env.JWT_SECRET || 'secret',
       { expiresIn: '30d' }
     );
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful',
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        balance: user.balance,
-        currency: user.currency
-      }
+      user
     });
 
   } catch (error) {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: 'Registration failed',
-      error: error.message
+      message: 'Registration failed'
     });
   }
 });
 
-// ===============================
+// ============================
 // LOGIN
-// ===============================
+// ============================
 
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username and password required'
+      });
+    }
 
     const user = await User.findOne({
       where: {
@@ -142,9 +106,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const valid = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password);
 
-    if (!valid) {
+    if (!validPassword) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials'
@@ -152,24 +116,15 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      {
-        id: user.id,
-        username: user.username
-      },
-      process.env.JWT_SECRET || 'super-secret-key',
+      { id: user.id },
+      process.env.JWT_SECRET || 'secret',
       { expiresIn: '30d' }
     );
 
     res.json({
       success: true,
       token,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        balance: user.balance,
-        currency: user.currency
-      }
+      user
     });
 
   } catch (error) {
