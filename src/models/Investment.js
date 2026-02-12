@@ -7,38 +7,52 @@ module.exports = (sequelize) => {
       autoIncrement: true,
       primaryKey: true
     },
+
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false
     },
+
     planId: {
       type: DataTypes.STRING,
       allowNull: false
     },
+
     planName: {
       type: DataTypes.STRING,
       allowNull: false
     },
+
     amount: {
       type: DataTypes.DECIMAL(15, 2),
       allowNull: false
     },
+
     dailyReturn: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false
     },
+
+    durationDays: {
+      type: DataTypes.INTEGER,
+      allowNull: false
+    },
+
     startDate: {
       type: DataTypes.DATE,
       allowNull: false
     },
+
     endDate: {
       type: DataTypes.DATE,
       allowNull: false
     },
+
     status: {
-      type: DataTypes.ENUM('active', 'completed'),
+      type: DataTypes.ENUM('active', 'completed', 'cancelled'),
       defaultValue: 'active'
     }
+
   }, {
     tableName: 'investments',
     timestamps: true
