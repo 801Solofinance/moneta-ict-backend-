@@ -39,10 +39,11 @@ const upload = multer({
 // CREATE DEPOSIT
 // ===============================
 
+const { authenticate } = require('../middleware/auth');
+
 router.post('/deposit', authenticate, async (req, res) => {
   try {
     const { amount, currency } = req.body;
-    const userId = req.userId; // ✅ FIXED
 
     if (!amount || !currency) {
       return res.status(400).json({
@@ -51,15 +52,13 @@ router.post('/deposit', authenticate, async (req, res) => {
       });
     }
 
-    const transactionId = `DEP${Date.now()}${userId}`;
-
     const transaction = await Transaction.create({
-      userId,
+      transactionId: `DEP${Date.now()}${req.user.id}`,
+      userId: req.user.id,
       type: 'DEPOSIT',
       amount,
       currency,
-      status: 'PENDING',
-      description: 'User deposit'
+      status: 'PENDING'
     });
 
     res.json({
@@ -68,7 +67,7 @@ router.post('/deposit', authenticate, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Deposit error:', error);
+    console.error(error);
     res.status(500).json({
       success: false,
       message: 'Deposit error'
