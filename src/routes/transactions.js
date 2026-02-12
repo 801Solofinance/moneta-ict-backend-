@@ -197,4 +197,33 @@ router.post('/:transactionId/reject', authenticate, async (req, res) => {
   }
 });
 
+// ===============================
+// CHECK STATUS
+// ===============================
+
+router.get('/:transactionId/status', authenticate, async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+
+    const transaction = await Transaction.findOne({
+      where: {
+        transactionId,
+        userId: req.user.id
+      }
+    });
+
+    if (!transaction) {
+      return res.status(404).json({ success: false });
+    }
+
+    res.json({
+      success: true,
+      status: transaction.status
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false });
+  }
+});
+
 module.exports = router;
