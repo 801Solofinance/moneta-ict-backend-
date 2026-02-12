@@ -7,6 +7,7 @@ const path = require('path');
 const axios = require('axios');
 
 const { Transaction, User } = require('../models');
+const { authenticate } = require('../middleware/auth'); // adjust path if needed
 
 // ===============================
 // Multer Setup
@@ -38,10 +39,10 @@ const upload = multer({
 // CREATE DEPOSIT
 // ===============================
 
-router.post('/deposit', async (req, res) => {
+router.post('/deposit', authenticate, async (req, res) => {
   try {
     const { amount, currency } = req.body;
-    const userId = req.user.id;
+    const userId = req.userId; // ✅ FIXED
 
     if (!amount || !currency) {
       return res.status(400).json({ success: false, message: 'Missing fields' });
@@ -50,7 +51,6 @@ router.post('/deposit', async (req, res) => {
     const transactionId = `DEP${Date.now()}${userId}`;
 
     const transaction = await Transaction.create({
-      transactionId,
       userId,
       type: 'DEPOSIT',
       amount,
@@ -73,17 +73,17 @@ router.post('/deposit', async (req, res) => {
 // UPLOAD PAYMENT PROOF
 // ===============================
 
-router.post('/:transactionId/upload-proof', upload.single('paymentProof'), async (req, res) => {
+router.post('/:transactionId/upload-proof', authenticate, upload.single('paymentProof'), async (req, res) => {
   try {
     const { transactionId } = req.params;
-    const userId = req.user.id;
+    const userId = req.userId; // ✅ FIXED
 
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
     const transaction = await Transaction.findOne({
-      where: { transactionId, userId }
+      where: { id: transactionId, userId }
     });
 
     if (!transaction) {
@@ -99,7 +99,7 @@ router.post('/:transactionId/upload-proof', upload.single('paymentProof'), async
 
     const user = await User.findByPk(userId);
 
-    // 🔥 Send Telegram Notification
+    // Send Telegram notification
     await axios.post(`${process.env.BACKEND_URL}/api/notify-deposit`, {
       userId: user.id,
       userName: user.username,
@@ -107,7 +107,7 @@ router.post('/:transactionId/upload-proof', upload.single('paymentProof'), async
       userPhone: user.phone || '',
       amount: transaction.amount,
       country: user.country,
-      transactionId: transaction.transactionId,
+      transactionId: transaction.id,
       proofImageUrl: `${process.env.BACKEND_URL}${paymentProofUrl}`,
       proofFileName: req.file.filename,
       timestamp: new Date()
@@ -132,9 +132,7 @@ router.post('/:transactionId/approve', async (req, res) => {
   try {
     const { transactionId } = req.params;
 
-    const transaction = await Transaction.findOne({
-      where: { transactionId }
-    });
+    const transaction = await Transaction.findByPk(transactionId);
 
     if (!transaction) {
       return res.status(404).json({ success: false });
@@ -146,7 +144,6 @@ router.post('/:transactionId/approve', async (req, res) => {
       parseFloat(user.balance) + parseFloat(transaction.amount);
 
     await user.update({ balance: newBalance });
-
     await transaction.update({ status: 'COMPLETED' });
 
     res.json({
@@ -168,9 +165,7 @@ router.post('/:transactionId/reject', async (req, res) => {
   try {
     const { transactionId } = req.params;
 
-    const transaction = await Transaction.findOne({
-      where: { transactionId }
-    });
+    const transaction = await Transaction.findByPk(transactionId);
 
     if (!transaction) {
       return res.status(404).json({ success: false });
