@@ -144,32 +144,34 @@ router.post('/:transactionId/upload-proof',
 // APPROVE DEPOSIT
 // ===============================
 
-router.post('/:transactionId/approve', authenticate, async (req, res) => {
+router.post('/:transactionId/approve', authenticate, requireAdmin, async (req, res) => {
   try {
     const { transactionId } = req.params;
 
-    const transaction = await Transaction.findByPk(transactionId);
+    const transaction = await Transaction.findOne({
+      where: { transactionId }
+    });
 
-    if (!transaction) {
-      return res.status(404).json({ success: false });
+    if (!transaction || transaction.status !== 'PENDING') {
+      return res.status(400).json({ success: false });
     }
 
     const user = await User.findByPk(transaction.userId);
 
-    const newBalance =
-      parseFloat(user.balance) + parseFloat(transaction.amount);
+    await user.update({
+      balance: parseFloat(user.balance) + parseFloat(transaction.amount)
+    });
 
-    await user.update({ balance: newBalance });
-
-    await transaction.update({ status: 'COMPLETED' });
+    await transaction.update({
+      status: 'COMPLETED'
+    });
 
     res.json({
       success: true,
-      newBalance
+      message: 'Deposit approved'
     });
 
   } catch (error) {
-    console.error('Approve error:', error);
     res.status(500).json({ success: false });
   }
 });
