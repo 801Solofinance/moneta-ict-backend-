@@ -40,6 +40,12 @@ module.exports = (sequelize) => {
       allowNull: false
     },
 
+    // 🔐 NEW: Role system
+    role: {
+      type: DataTypes.ENUM('user', 'admin'),
+      defaultValue: 'user'
+    },
+
     balance: {
       type: DataTypes.DECIMAL(15, 2),
       defaultValue: 0
