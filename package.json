@@ -21,3 +21,4 @@
     "sequelize": "^6.37.0"
   }
 }
+npm install bcryptjs
