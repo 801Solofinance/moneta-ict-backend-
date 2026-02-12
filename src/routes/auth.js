@@ -60,11 +60,20 @@ router.post('/register', async (req, res) => {
       { expiresIn: '30d' }
     );
 
-    res.status(201).json({
-      success: true,
-      token,
-      user
-    });
+    res.json({
+  success: true,
+  message: 'Login successful',
+  token,
+  user: {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    fullName: user.fullName,
+    balance: user.balance,
+    currency: user.currency,
+    country: user.country
+  }
+});
 
   } catch (error) {
     console.error(error);
