@@ -1,5 +1,6 @@
 // src/routes/transactions.js
 
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
