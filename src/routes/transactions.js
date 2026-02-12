@@ -1,339 +1,188 @@
-// backend/routes/transactions.js
-// API routes for deposit and transaction management
+// src/routes/transactions.js
 
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { sendDepositNotification } = require('../telegram-bot');
+const axios = require('axios');
 
-// Import your database models (adjust based on your setup)
-// const { Transaction, User } = require('../models');
+const { Transaction, User } = require('../models');
 
-// Configure multer for payment proof uploads
+// ===============================
+// Multer Setup
+// ===============================
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/payment-proofs/');
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'proof-' + uniqueSuffix + path.extname(file.originalname));
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'proof-' + unique + path.extname(file.originalname));
   }
 });
 
 const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'));
-    }
+    const allowed = /jpeg|jpg|png/;
+    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mime = allowed.test(file.mimetype);
+    if (ext && mime) cb(null, true);
+    else cb(new Error('Only images allowed'));
   }
 });
 
-/**
- * CREATE DEPOSIT
- * POST /api/transactions/deposit
- * Body: { amount, currency }
- */
+// ===============================
+// CREATE DEPOSIT
+// ===============================
+
 router.post('/deposit', async (req, res) => {
   try {
     const { amount, currency } = req.body;
-    const userId = req.user.id; // From authentication middleware
+    const userId = req.user.id;
 
-    // Validate amount
-    const minAmount = 10; // Set minimum based on currency
-    if (amount < minAmount) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum deposit amount is ${currency} ${minAmount}`
-      });
+    if (!amount || !currency) {
+      return res.status(400).json({ success: false, message: 'Missing fields' });
     }
 
-    // Generate unique transaction ID and reference
     const transactionId = `DEP${Date.now()}${userId}`;
-    const reference = `REF${Date.now()}`;
 
-    // Create transaction record
     const transaction = await Transaction.create({
       transactionId,
       userId,
       type: 'DEPOSIT',
       amount,
       currency,
-      status: 'PENDING',
-      reference,
-      paymentProofUrl: null,
-      reviewTimerStart: null,
-      reviewTimerEnd: null,
-      createdAt: new Date()
+      status: 'PENDING'
     });
 
     res.json({
       success: true,
-      transaction: {
-        id: transaction.id,
-        transactionId,
-        reference,
-        amount,
-        currency,
-        accountDetails: {
-          bankName: process.env.BANK_NAME || 'Sample Bank',
-          accountNumber: process.env.ACCOUNT_NUMBER || '1234567890',
-          accountName: process.env.ACCOUNT_NAME || 'MONETA-ICT'
-        }
-      }
+      transaction
     });
+
   } catch (error) {
-    console.error('Error creating deposit:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating deposit'
-    });
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Deposit error' });
   }
 });
 
-/**
- * UPLOAD PAYMENT PROOF
- * POST /api/transactions/:transactionId/upload-proof
- */
+// ===============================
+// UPLOAD PAYMENT PROOF
+// ===============================
+
 router.post('/:transactionId/upload-proof', upload.single('paymentProof'), async (req, res) => {
   try {
     const { transactionId } = req.params;
     const userId = req.user.id;
 
     if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: 'No file uploaded'
-      });
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
 
-    // Find transaction
     const transaction = await Transaction.findOne({
       where: { transactionId, userId }
     });
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
     }
 
-    // Update transaction with payment proof
     const paymentProofUrl = `/uploads/payment-proofs/${req.file.filename}`;
-    const reviewStart = new Date();
-    const reviewEnd = new Date(reviewStart.getTime() + 5 * 60000); // 5 minutes
 
     await transaction.update({
       paymentProofUrl,
-      reviewTimerStart: reviewStart,
-      reviewTimerEnd: reviewEnd,
       status: 'REVIEWING'
     });
 
-    // Get user details
     const user = await User.findByPk(userId);
 
-    // Send notification to admin via Telegram
-    await sendDepositNotification({
-      transactionId: transaction.transactionId,
+    // 🔥 Send Telegram Notification
+    await axios.post(`${process.env.BACKEND_URL}/api/notify-deposit`, {
       userId: user.id,
-      username: user.username,
+      userName: user.username,
+      userEmail: user.email,
+      userPhone: user.phone || '',
       amount: transaction.amount,
-      currency: transaction.currency,
-      paymentProofUrl: `${process.env.APP_URL}${paymentProofUrl}`,
-      timestamp: transaction.createdAt
+      country: user.country,
+      transactionId: transaction.transactionId,
+      proofImageUrl: `${process.env.BACKEND_URL}${paymentProofUrl}`,
+      proofFileName: req.file.filename,
+      timestamp: new Date()
     });
 
     res.json({
       success: true,
-      message: 'Payment proof uploaded successfully',
-      reviewTimerEnd: reviewEnd
+      message: 'Proof uploaded and sent to admin'
     });
+
   } catch (error) {
-    console.error('Error uploading payment proof:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error uploading payment proof'
-    });
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Upload error' });
   }
 });
 
-/**
- * CHECK TRANSACTION STATUS
- * GET /api/transactions/:transactionId/status
- */
-router.get('/:transactionId/status', async (req, res) => {
-  try {
-    const { transactionId } = req.params;
-    const userId = req.user.id;
+// ===============================
+// APPROVE
+// ===============================
 
-    const transaction = await Transaction.findOne({
-      where: { transactionId, userId }
-    });
-
-    if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      status: transaction.status,
-      amount: transaction.amount,
-      currency: transaction.currency,
-      createdAt: transaction.createdAt,
-      updatedAt: transaction.updatedAt
-    });
-  } catch (error) {
-    console.error('Error checking status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error checking transaction status'
-    });
-  }
-});
-
-/**
- * APPROVE TRANSACTION (Admin/Telegram Bot)
- * POST /api/transactions/:transactionId/approve
- */
 router.post('/:transactionId/approve', async (req, res) => {
   try {
     const { transactionId } = req.params;
-    const { adminId, timestamp } = req.body;
 
-    // Find transaction
     const transaction = await Transaction.findOne({
       where: { transactionId }
     });
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
+      return res.status(404).json({ success: false });
     }
 
-    // Update user balance
     const user = await User.findByPk(transaction.userId);
-    const newBalance = parseFloat(user.balance) + parseFloat(transaction.amount);
 
-    await user.update({
-      balance: newBalance
-    });
+    const newBalance =
+      parseFloat(user.balance) + parseFloat(transaction.amount);
 
-    // Update transaction status
-    await transaction.update({
-      status: 'COMPLETED',
-      adminActionTimestamp: timestamp,
-      adminUserId: adminId
-    });
+    await user.update({ balance: newBalance });
 
-    // Emit real-time update via WebSocket (if implemented)
-    // io.to(user.id).emit('balance_update', { balance: newBalance });
-    // io.to(user.id).emit('transaction_update', { transactionId, status: 'COMPLETED' });
+    await transaction.update({ status: 'COMPLETED' });
 
     res.json({
       success: true,
-      message: 'Transaction approved successfully',
       newBalance
     });
+
   } catch (error) {
-    console.error('Error approving transaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error approving transaction'
-    });
+    console.error(error);
+    res.status(500).json({ success: false });
   }
 });
 
-/**
- * REJECT TRANSACTION (Admin/Telegram Bot)
- * POST /api/transactions/:transactionId/reject
- */
+// ===============================
+// REJECT
+// ===============================
+
 router.post('/:transactionId/reject', async (req, res) => {
   try {
     const { transactionId } = req.params;
-    const { adminId, timestamp } = req.body;
 
-    // Find transaction
     const transaction = await Transaction.findOne({
       where: { transactionId }
     });
 
     if (!transaction) {
-      return res.status(404).json({
-        success: false,
-        message: 'Transaction not found'
-      });
+      return res.status(404).json({ success: false });
     }
 
-    // Update transaction status
-    await transaction.update({
-      status: 'REJECTED',
-      adminActionTimestamp: timestamp,
-      adminUserId: adminId
-    });
+    await transaction.update({ status: 'REJECTED' });
 
-    // Emit real-time update via WebSocket
-    // io.to(transaction.userId).emit('transaction_update', { 
-    //   transactionId, 
-    //   status: 'REJECTED' 
-    // });
+    res.json({ success: true });
 
-    res.json({
-      success: true,
-      message: 'Transaction rejected successfully'
-    });
   } catch (error) {
-    console.error('Error rejecting transaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error rejecting transaction'
-    });
-  }
-});
-
-/**
- * GET USER TRANSACTIONS
- * GET /api/transactions
- */
-router.get('/', async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { limit = 50, offset = 0, type } = req.query;
-
-    const whereClause = { userId };
-    if (type) whereClause.type = type;
-
-    const transactions = await Transaction.findAll({
-      where: whereClause,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [['createdAt', 'DESC']]
-    });
-
-    res.json({
-      success: true,
-      transactions
-    });
-  } catch (error) {
-    console.error('Error fetching transactions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching transactions'
-    });
+    console.error(error);
+    res.status(500).json({ success: false });
   }
 });
 
